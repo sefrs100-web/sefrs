@@ -1,1 +1,22 @@
-<!doctype html><html><body><h1>TravelCoach Demo</h1></body></html>
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>TravelCoach</title><script src="https://cdn.tailwindcss.com"></script>
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#4f46e5">
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', async () => {
+      try { await navigator.serviceWorker.register('./sw.js'); } catch(e) { console.log(e); }
+    });
+  }
+  let deferredPrompt=null;
+  window.addEventListener('beforeinstallprompt',(e)=>{e.preventDefault();deferredPrompt=e;document.getElementById('pwaInstall')?.classList.remove('hidden');});
+  async function doInstall(){ if(!deferredPrompt){ alert('설치 가능한 상태가 아닙니다. HTTPS 주소에서 다시 시도해 주세요.'); return; } deferredPrompt.prompt(); const r=await deferredPrompt.userChoice; if(r.outcome==='accepted'){ const b=document.getElementById('pwaInstall'); if(b) b.textContent='설치됨 ✅'; } deferredPrompt=null; }
+</script>
+
+</head><body><div class="p-6">TravelCoach</div>
+<div class="max-w-md mx-auto px-5 -mt-2 mb-2">
+  <button id="pwaInstall" onclick="doInstall()" class="hidden w-full rounded-xl text-white font-medium shadow px-4 py-3 bg-emerald-600 active:scale-[0.99]">
+    휴대폰에 설치하기
+  </button>
+</div>
+
+</body></html>
