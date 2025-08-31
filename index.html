@@ -1,22 +1,388 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>TravelCoach</title><script src="https://cdn.tailwindcss.com"></script>
-<link rel="manifest" href="./manifest.webmanifest">
-<meta name="theme-color" content="#4f46e5">
-<script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', async () => {
-      try { await navigator.serviceWorker.register('./sw.js'); } catch(e) { console.log(e); }
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>TravelCoach - Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <meta name="theme-color" content="#4f46e5">
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', async () => {
+        try { await navigator.serviceWorker.register('./sw.js'); } catch (e) { console.log('SW reg failed', e); }
+      });
+    }
+    let deferredPrompt=null;
+    window.addEventListener('beforeinstallprompt',(e)=>{e.preventDefault();deferredPrompt=e;document.getElementById('pwaInstall')?.classList.remove('hidden');});
+    async function doInstall(){ if(!deferredPrompt){ alert('설치 가능한 상태가 아닙니다. HTTPS 주소에서 접속해 주세요.'); return; } deferredPrompt.prompt(); const r=await deferredPrompt.userChoice; if(r.outcome==='accepted'){ const b=document.getElementById('pwaInstall'); if(b) b.textContent='설치됨 ✅'; } deferredPrompt=null; }
+  </script>
+  <style>
+    :root { --safe: env(safe-area-inset-bottom); }
+    .screen { display:none; }
+    .screen.active { display:block; }
+    .btn { border-radius: 0.75rem; color: white; font-weight: 600; box-shadow: 0 6px 16px rgba(0,0,0,.08); padding: 0.75rem 1rem; transition: transform .05s; }
+    .btn:active { transform: scale(.99); }
+    .chip { padding: .25rem .75rem; border-radius: 999px; font-size: .875rem; }
+    .tab { padding: .5rem 1rem; border-radius: .75rem; font-weight: 600; }
+    .tab-active { background: #4f46e5; color: #fff; }
+    .tab-inactive { background: #e0e7ff; color: #4338ca; }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+  <div class="max-w-md mx-auto min-h-screen flex flex-col">
+    <!-- Header -->
+    <header class="flex items-center justify-between px-5 pt-6 pb-4">
+      <h1 class="text-2xl font-bold text-indigo-700">TravelCoach</h1>
+      <button id="btnMy" class="btn bg-indigo-600">내 정보</button>
+    </header>
+
+    <!-- Screens -->
+    <main class="flex-1 px-5 space-y-5 pb-24">
+      <!-- Home -->
+      <section id="screen-home" class="screen active">
+        <div class="bg-white rounded-2xl shadow p-4">
+          <h2 class="text-xl font-semibold text-gray-800 mb-4">여행 계획</h2>
+          <div class="space-y-3">
+            <button id="btnStart" class="btn w-full bg-indigo-500 hover:bg-indigo-600">여행 계획 시작하기</button>
+            <button id="btnSaved" class="btn w-full bg-pink-500 hover:bg-pink-600">내 일정 보기</button>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow p-4">
+          <h3 class="text-lg font-semibold text-gray-800 mb-3">추천 빠른 시작</h3>
+          <div class="grid grid-cols-2 gap-3">
+            <button class="chip bg-indigo-100 text-indigo-700" data-quick="서천">서천 2박3일</button>
+            <button class="chip bg-indigo-100 text-indigo-700" data-quick="제주">제주 3박4일</button>
+            <button class="chip bg-indigo-100 text-indigo-700" data-quick="강릉">강릉 당일치기</button>
+            <button class="chip bg-indigo-100 text-indigo-700" data-quick="여수">여수 1박2일</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Plan Input -->
+      <section id="screen-input" class="screen">
+        <div class="bg-white rounded-2xl shadow p-4">
+          <h2 class="text-xl font-semibold text-gray-800 mb-4">여행 정보 입력</h2>
+          <form id="planForm" class="space-y-3">
+            <input id="dest" type="text" placeholder="여행지 (예: 서천, 제주)" class="w-full border rounded-xl p-3" required />
+            <input id="dates" type="text" placeholder="기간 (예: 9/5 ~ 9/7)" class="w-full border rounded-xl p-3" required />
+            <input id="people" type="number" min="1" placeholder="인원 (예: 4명)" class="w-full border rounded-xl p-3" required />
+            <select id="transport" class="w-full border rounded-xl p-3" required>
+              <option value="">이동수단 선택</option>
+              <option>자가용</option>
+              <option>대중교통</option>
+            </select>
+            <div class="flex flex-wrap gap-2" id="interestWrap"></div>
+            <button type="submit" class="btn w-full bg-green-500 hover:bg-green-600">AI 일정 짜기</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- Result -->
+      <section id="screen-result" class="screen">
+        <div class="bg-white rounded-2xl shadow p-4">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-xl font-semibold text-gray-800">AI 일정 결과</h2>
+            <button id="btnSave" class="btn bg-indigo-600">저장</button>
+          </div>
+
+          <div class="flex gap-2 mb-4">
+            <button id="tab-plan" class="tab tab-active">일정표</button>
+            <button id="tab-map" class="tab tab-inactive">지도</button>
+            <button id="tab-cost" class="tab tab-inactive">비용</button>
+          </div>
+
+          <div id="tabc-plan" class="space-y-3"></div>
+
+          <div id="tabc-map" class="hidden">
+            <div class="rounded-2xl overflow-hidden border border-indigo-200">
+              <iframe title="map" srcdoc="
+                <style>html,body{height:100%;margin:0} .pin{font:16px sans-serif}</style>
+                <div style='height:240px;display:flex;align-items:center;justify-content:center;background:#eef2ff;color:#4338ca'>
+                  <div class='pin'>🗺️ 지도 미리보기 (데모)</div>
+                </div>
+              " class="w-full h-60"></iframe>
+            </div>
+            <p class="text-sm text-gray-500 mt-2">실제 버전에서는 카카오/구글 지도에 동선이 표시됩니다.</p>
+          </div>
+
+          <div id="tabc-cost" class="hidden">
+            <ul id="costList" class="space-y-2"></ul>
+            <div class="mt-3 p-3 bg-indigo-50 rounded-xl">
+              <div class="flex justify-between font-semibold">
+                <span>총액</span><span id="costTotal">-</span>
+              </div>
+              <div class="flex justify-between text-sm text-gray-600">
+                <span>1인당</span><span id="costPer">-</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 grid grid-cols-2 gap-2">
+            <button id="btnShare" class="btn bg-pink-500 hover:bg-pink-600">공유</button>
+            <button id="btnEdit" class="btn bg-gray-700 hover:bg-gray-800">편집</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Saved -->
+      <section id="screen-saved" class="screen">
+        <div class="bg-white rounded-2xl shadow p-4">
+          <h2 class="text-xl font-semibold text-gray-800 mb-3">내 일정</h2>
+          <div id="savedList" class="space-y-3"></div>
+        </div>
+      </section>
+
+      <!-- My Page -->
+      <section id="screen-my" class="screen">
+        <div class="bg-white rounded-2xl shadow p-4 space-y-3">
+          <h2 class="text-xl font-semibold text-gray-800">마이페이지</h2>
+          <div class="flex items-center gap-3">
+            <div class="w-12 h-12 rounded-full bg-indigo-200 flex items-center justify-center text-indigo-700 font-bold">S</div>
+            <div>
+              <div class="font-semibold">세퍼</div>
+              <div class="text-sm text-gray-500">프리 플랜</div>
+            </div>
+          </div>
+          <button id="btnHomeFromMy" class="btn bg-indigo-600 w-full">홈으로</button>
+        </div>
+      </section>
+    </main>
+
+    <!-- Install button for PWA -->
+    <div class="max-w-md mx-auto px-5 mt-3 mb-2">
+      <button id="pwaInstall" onclick="doInstall()" class="hidden w-full rounded-xl text-white font-medium shadow px-4 py-3 bg-emerald-600 active:scale-[0.99]">
+        휴대폰에 설치하기
+      </button>
+    </div>
+
+    <!-- Bottom Nav -->
+    <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/80 backdrop-blur border-t rounded-t-2xl" style="padding-bottom: max(12px, var(--safe))">
+      <div class="grid grid-cols-4 gap-1 px-4 pt-2">
+        <button class="nav-btn py-3 text-indigo-700 font-medium" data-target="home">홈</button>
+        <button class="nav-btn py-3 text-gray-600" data-target="input">여행 만들기</button>
+        <button class="nav-btn py-3 text-gray-600" data-target="saved">저장함</button>
+        <button class="nav-btn py-3 text-gray-600" data-target="my">내 정보</button>
+      </div>
+    </nav>
+  </div>
+
+  <script>
+    const $ = (s) => document.querySelector(s);
+    const $$ = (s) => document.querySelectorAll(s);
+
+    const screens = {
+      home: $("#screen-home"),
+      input: $("#screen-input"),
+      result: $("#screen-result"),
+      saved: $("#screen-saved"),
+      my: $("#screen-my"),
+    };
+
+    function show(name) {
+      Object.values(screens).forEach(el => el.classList.remove("active"));
+      screens[name].classList.add("active");
+      $$(".nav-btn").forEach(b => b.classList.remove("text-indigo-700","font-medium"));
+      $$(".nav-btn").forEach(b => { if (b.dataset.target === name) b.classList.add("text-indigo-700","font-medium"); });
+      window.scrollTo({top: 0, behavior: "smooth"});
+    }
+
+    // Bottom nav
+    $$(".nav-btn").forEach(b => b.addEventListener("click", () => show(b.dataset.target)));
+
+    // Header buttons
+    $("#btnMy").addEventListener("click", () => show("my"));
+    $("#btnStart").addEventListener("click", () => show("input"));
+    $("#btnSaved").addEventListener("click", () => { renderSaved(); show("saved"); });
+    $("#btnHomeFromMy").addEventListener("click", () => show("home"));
+
+    // Quick start
+    $$("[data-quick]").forEach(chip => chip.addEventListener("click", () => {
+      show("input");
+      $("#dest").value = chip.dataset.quick;
+      $("#dates").value = chip.dataset.quick === "서천" ? "9/5 ~ 9/7" : "";
+      $("#people").value = 4;
+      $("#transport").value = "자가용";
+    }));
+
+    // Interests
+    const interests = ["바다","맛집","문화","쇼핑","걷기","사진","힐링","아이동반"];
+    const interestWrap = $("#interestWrap");
+    interests.forEach(tag => {
+      const el = document.createElement("button");
+      el.type = "button";
+      el.textContent = tag;
+      el.className = "chip bg-indigo-100 text-indigo-700 hover:bg-indigo-200";
+      el.addEventListener("click", () => el.classList.toggle("ring-2"));
+      interestWrap.appendChild(el);
     });
-  }
-  let deferredPrompt=null;
-  window.addEventListener('beforeinstallprompt',(e)=>{e.preventDefault();deferredPrompt=e;document.getElementById('pwaInstall')?.classList.remove('hidden');});
-  async function doInstall(){ if(!deferredPrompt){ alert('설치 가능한 상태가 아닙니다. HTTPS 주소에서 다시 시도해 주세요.'); return; } deferredPrompt.prompt(); const r=await deferredPrompt.userChoice; if(r.outcome==='accepted'){ const b=document.getElementById('pwaInstall'); if(b) b.textContent='설치됨 ✅'; } deferredPrompt=null; }
-</script>
 
-</head><body><div class="p-6">TravelCoach</div>
-<div class="max-w-md mx-auto px-5 -mt-2 mb-2">
-  <button id="pwaInstall" onclick="doInstall()" class="hidden w-full rounded-xl text-white font-medium shadow px-4 py-3 bg-emerald-600 active:scale-[0.99]">
-    휴대폰에 설치하기
-  </button>
-</div>
+    // Fake AI generation
+    function makePlan({dest, dates, people, transport, tags}) {
+      const sample = [
+        { t: "09:00", title: "출발", icon: "🚗" },
+        { t: "11:30", title: `${dest} 대표 명소 도착`, icon: "📍" },
+        { t: "13:00", title: "현지 맛집 점심", icon: "🍲" },
+        { t: "15:00", title: "실내 관람 / 카페 휴식", icon: "🏛️" },
+        { t: "17:30", title: "해변 산책 및 사진", icon: "🏖️" },
+        { t: "19:00", title: "숙소 체크인", icon: "🛏️" },
+      ];
+      if (tags.includes("걷기")) sample.splice(4,0,{ t:"16:20", title:"해안 산책 코스", icon:"👟"});
+      if (tags.includes("아이동반")) sample.push({ t:"20:00", title:"키즈 프로그램", icon:"🎈"});
 
-</body></html>
+      const cost = [
+        { name:"식사", price: people * 15000 * 2 },
+        { name:"카페/간식", price: people * 7000 },
+        { name:"입장료", price: people * 5000 },
+        { name:"숙소(1박)", price: 90000 },
+        { name:"교통비", price: transport === "자가용" ? 40000 : 60000 },
+      ];
+
+      return { meta: {dest, dates, people, transport, tags, createdAt: Date.now()}, items: sample, cost };
+    }
+
+    function formatKRW(n){ return new Intl.NumberFormat('ko-KR', {style:'currency',currency:'KRW'}).format(n); }
+
+    function renderPlan(plan) {
+      // 일정표
+      const list = $("#tabc-plan");
+      list.innerHTML = "";
+      plan.items.forEach(step => {
+        const div = document.createElement("div");
+        div.className = "bg-indigo-50 p-3 rounded-xl";
+        div.innerHTML = \`
+          <p class="text-sm text-gray-500">\${step.t}</p>
+          <p class="font-medium text-gray-800">\${step.title} \${step.icon}</p>
+        \`;
+        list.appendChild(div);
+      });
+
+      // 비용
+      const ul = $("#costList");
+      ul.innerHTML = "";
+      let total = 0;
+      plan.cost.forEach(c => {
+        total += c.price;
+        const li = document.createElement("li");
+        li.className = "flex justify-between bg-indigo-50 rounded-xl px-3 py-2";
+        li.innerHTML = \`<span>\${c.name}</span><span>\${formatKRW(c.price)}</span>\`;
+        ul.appendChild(li);
+      });
+      $("#costTotal").textContent = formatKRW(total);
+      $("#costPer").textContent = formatKRW(Math.round(total / plan.meta.people));
+    }
+
+    function setTab(name){
+      const tabs = { plan:["#tab-plan","#tabc-plan"], map:["#tab-map","#tabc-map"], cost:["#tab-cost","#tabc-cost"] };
+      Object.entries(tabs).forEach(([k,[btn,body]])=>{
+        const b = document.querySelector(btn), c = document.querySelector(body);
+        if (k===name) { b.classList.add("tab-active"); b.classList.remove("tab-inactive"); c.classList.remove("hidden"); }
+        else { b.classList.remove("tab-active"); b.classList.add("tab-inactive"); c.classList.add("hidden"); }
+      });
+    }
+    $("#tab-plan").addEventListener("click", ()=>setTab("plan"));
+    $("#tab-map").addEventListener("click", ()=>setTab("map"));
+    $("#tab-cost").addEventListener("click", ()=>setTab("cost"));
+
+    // Generate plan
+    let currentPlan = null;
+    $("#planForm").addEventListener("submit", (e)=>{
+      e.preventDefault();
+      const tags = Array.from($("#interestWrap").children).filter(el=>el.classList.contains("ring-2")).map(el=>el.textContent);
+      const data = {
+        dest: $("#dest").value.trim(),
+        dates: $("#dates").value.trim(),
+        people: Number($("#people").value || 1),
+        transport: $("#transport").value || "자가용",
+        tags,
+      };
+      currentPlan = makePlan(data);
+      renderPlan(currentPlan);
+      setTab("plan");
+      show("result");
+    });
+
+    // Share
+    $("#btnShare").addEventListener("click", async ()=>{
+      if (!currentPlan) return;
+      const text = \`[트래블코치]\\n여행지: \${currentPlan.meta.dest}\\n기간: \${currentPlan.meta.dates}\\n인원: \${currentPlan.meta.people}명\\n주요 일정: \${currentPlan.items.map(s=>s.t+' '+s.title).join(' / ')}\`;
+      if (navigator.share) {
+        try{ await navigator.share({ title:"트래블코치 일정", text }); } catch(e){}
+      } else {
+        await navigator.clipboard.writeText(text);
+        alert("클립보드에 복사되었습니다. 카톡에 붙여넣기 하세요!");
+      }
+    });
+
+    // Edit
+    $("#btnEdit").addEventListener("click", ()=>{
+      if (!currentPlan) return;
+      $("#dest").value = currentPlan.meta.dest;
+      $("#dates").value = currentPlan.meta.dates;
+      $("#people").value = currentPlan.meta.people;
+      $("#transport").value = currentPlan.meta.transport;
+      Array.from($("#interestWrap").children).forEach(el=>{
+        el.classList.toggle("ring-2", currentPlan.meta.tags.includes(el.textContent));
+      });
+      show("input");
+    });
+
+    // Save / Load
+    function getSaved(){ try { return JSON.parse(localStorage.getItem("tc_plans")||"[]"); } catch { return []; } }
+    function setSaved(list){ localStorage.setItem("tc_plans", JSON.stringify(list)); }
+
+    $("#btnSave").addEventListener("click", ()=>{
+      if (!currentPlan) return;
+      const all = getSaved();
+      all.unshift(currentPlan);
+      setSaved(all.slice(0,50));
+      alert("저장되었습니다!");
+    });
+
+    function renderSaved(){
+      const host = $("#savedList");
+      host.innerHTML = "";
+      const all = getSaved();
+      if (!all.length) {
+        host.innerHTML = '<div class="text-gray-500">저장된 일정이 없습니다.</div>';
+        return;
+      }
+      all.forEach((p, idx)=>{
+        const card = document.createElement("div");
+        card.className = "bg-white rounded-2xl shadow p-4";
+        const date = new Date(p.meta.createdAt);
+        card.innerHTML = \`
+          <div class="flex items-center justify-between mb-2">
+            <div class="font-semibold text-gray-800">\${p.meta.dest} • \${p.meta.dates}</div>
+            <div class="text-xs text-gray-500">\${date.toLocaleString()}</div>
+          </div>
+          <div class="text-sm text-gray-600 mb-3">인원 \${p.meta.people}명 · \${p.meta.transport} · \${p.meta.tags.join(', ')}</div>
+          <div class="grid grid-cols-2 gap-2">
+            <button class="btn bg-indigo-600 w-full" data-load="\${idx}">불러오기</button>
+            <button class="btn bg-rose-500 w-full" data-del="\${idx}">삭제</button>
+          </div>
+        \`;
+        host.appendChild(card);
+      });
+
+      host.querySelectorAll("[data-load]").forEach(btn=>btn.addEventListener("click",()=>{
+        const idx = Number(btn.dataset.load);
+        const p = getSaved()[idx];
+        currentPlan = p;
+        renderPlan(currentPlan);
+        show("result");
+      }));
+      host.querySelectorAll("[data-del]").forEach(btn=>btn.addEventListener("click",()=>{
+        const idx = Number(btn.dataset.del);
+        const list = getSaved();
+        list.splice(idx,1);
+        setSaved(list);
+        renderSaved();
+      }));
+    }
+
+    renderSaved();
+  </script>
+</body>
+</html>
